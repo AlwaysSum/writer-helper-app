@@ -38,8 +38,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Clone source from GitCode
+        shell: bash
         run: |
-          git clone --depth 1 --branch "$GITCODE_BRANCH" "$GITCODE_URL" src
+          if [ -n "${{ secrets.GITCODE_TOKEN }}" ]; then
+            AUTH_URL=$(printf '%s' "$GITCODE_URL" | sed "s#://#://Sunflower816:${{ secrets.GITCODE_TOKEN }}@#")
+          else
+            AUTH_URL="$GITCODE_URL"
+          fi
+          git clone --depth 1 --branch "$GITCODE_BRANCH" "$AUTH_URL" src
       - name: Upload source workspace
         uses: actions/upload-artifact@v4
         with:
