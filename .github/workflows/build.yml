@@ -1,0 +1,270 @@
+# 从 GitCode 拉取 Writer Helper App 源码，构建 Windows / macOS / Linux / Android 安装包，
+# 上传为 Actions 构建产物；打 tag 推送或勾选发布时，自动发布 GitHub Release（安装包作为附件）。
+
+name: build-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      gitcode_url:
+        description: GitCode 源码仓库地址
+        required: false
+        default: https://gitcode.com/Sunflower816/writer_helper_app.git
+      gitcode_branch:
+        description: GitCode 源码分支
+        required: false
+        default: main
+      publish:
+        description: 构建完成后发布到 GitHub Release
+        required: false
+        type: boolean
+        default: false
+  push:
+    tags:
+      - 'v*'
+
+env:
+  GITCODE_URL: ${{ github.event.inputs.gitcode_url || 'https://gitcode.com/Sunflower816/writer_helper_app.git' }}
+  GITCODE_BRANCH: ${{ github.event.inputs.gitcode_branch || 'main' }}
+
+concurrency:
+  group: build-release
+  cancel-in-progress: true
+
+jobs:
+  # 把 GitHub 发布仓库自身（含本 workflow）保留在工作区，并把源码克隆到 ./src
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone source from GitCode
+        run: |
+          git clone --depth 1 --branch "$GITCODE_BRANCH" "$GITCODE_URL" src
+      - name: Upload source workspace
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-workspace
+          path: .
+          include-hidden-files: true
+
+  # ------------------------------------------------------------------
+  # Windows：flutter build windows --release + Inno Setup 制作安装包
+  # ------------------------------------------------------------------
+  windows:
+    needs: prepare
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: source-workspace
+          path: .
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install Inno Setup (for installer)
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        working-directory: src
+        run: |
+          $m = select-string -path pubspec.yaml -pattern '^version:\s*(\S+)'
+          "version=$($m.Matches[0].Groups[1].Value)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Flutter build windows
+        shell: pwsh
+        working-directory: src
+        run: flutter build windows --release
+
+      - name: Create installer with Inno Setup
+        shell: pwsh
+        working-directory: src
+        run: |
+          $ver = '${{ steps.version.outputs.version }}'
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { $iscc = "${env:ProgramFiles}\Inno Setup 6\ISCC.exe" }
+          & $iscc windows\installer.iss "/DMyAppVersion=$ver" "/DMyAppExeName=WriterHelper.exe" /Qp
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: writer-helper-windows
+          path: src/build/windows/pkg/WriterHelperSetup-*.exe
+
+  # ------------------------------------------------------------------
+  # macOS：flutter build macos --release，关闭强签名校验，产物压缩为 zip
+  # ------------------------------------------------------------------
+  macos:
+    needs: prepare
+    runs-on: macos-latest
+    env:
+      CODE_SIGNING_ALLOWED: 'NO'
+      CODE_SIGNING_REQUIRED: 'NO'
+      CODE_SIGN_IDENTITY: ''
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: source-workspace
+          path: .
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Resolve version
+        id: version
+        working-directory: src
+        run: |
+          VER=$(awk -F': *' '/^version:/{print $2; exit}' pubspec.yaml)
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+
+      - name: Flutter build macos
+        working-directory: src
+        run: flutter build macos --release
+
+      - name: Package app bundle
+        working-directory: src
+        run: |
+          cd build/macos/Build/Products/Release
+          zip -rq writer-helper-macos-${{ steps.version.outputs.version }}.zip *.app
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: writer-helper-macos
+          path: src/build/macos/Build/Products/Release/writer-helper-macos-*.zip
+
+  # ------------------------------------------------------------------
+  # Linux：项目当前无 linux/ 目录，构建前生成，再 build linux 并打包 tar.gz
+  # ------------------------------------------------------------------
+  linux:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: source-workspace
+          path: .
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev
+
+      - name: Generate linux platform
+        working-directory: src
+        run: flutter create --platforms=linux --org com.mgc --project-name writer_helper_app .
+
+      - name: Resolve version
+        id: version
+        working-directory: src
+        run: |
+          VER=$(awk -F': *' '/^version:/{print $2; exit}' pubspec.yaml)
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+
+      - name: Flutter build linux
+        working-directory: src
+        run: flutter build linux --release
+
+      - name: Package tar.gz
+        working-directory: src
+        run: |
+          tar -czf writer-helper-linux-${{ steps.version.outputs.version }}.tar.gz -C build/linux/x64/release/bundle .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: writer-helper-linux
+          path: src/writer-helper-linux-*.tar.gz
+
+  # ------------------------------------------------------------------
+  # Android：flutter build apk --release（当前 release 使用 debug 签名）
+  # ------------------------------------------------------------------
+  android:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: source-workspace
+          path: .
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Resolve version
+        id: version
+        working-directory: src
+        run: |
+          VER=$(awk -F': *' '/^version:/{print $2; exit}' pubspec.yaml)
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+
+      - name: Flutter build apk
+        working-directory: src
+        run: flutter build apk --release
+
+      - name: Rename apk
+        working-directory: src
+        run: |
+          mv build/app/outputs/flutter-apk/app-release.apk \
+             writer-helper-android-${{ steps.version.outputs.version }}.apk
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: writer-helper-android
+          path: src/writer-helper-android-*.apk
+
+  # ------------------------------------------------------------------
+  # 发布：合并四平台安装包并发布 GitHub Release（勾选 publish 或打 tag 时执行）
+  # ------------------------------------------------------------------
+  release:
+    needs: [windows, macos, linux, android]
+    runs-on: ubuntu-latest
+    if: |
+      startsWith(github.ref, 'refs/tags/') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.publish == 'true')
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Determine tag name
+        id: tag
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "name=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          else
+            VER=$(awk -F': *' '/^version:/{print $2; exit}' pubspec.yaml 2>/dev/null || true)
+            echo "name=v${VER:-0.0.0}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+          files: artifacts/*
+
+      - name: List artifacts
+        if: always()
+        run: ls -lhR artifacts
