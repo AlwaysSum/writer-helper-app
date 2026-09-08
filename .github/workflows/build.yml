@@ -209,13 +209,20 @@ jobs:
           path: artifacts
           merge-multiple: true
 
+      - name: Download source workspace for version resolution
+        uses: actions/download-artifact@v4
+        with:
+          name: source-workspace
+          path: .
+
       - name: Determine tag name
         id: tag
+        working-directory: src
         run: |
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
             echo "name=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
           else
-            VER=$(awk -F': *' '/^version:/{print $2; exit}' pubspec.yaml 2>/dev/null || true)
+            VER=$(awk -F': *' '/^version:/{print $2; exit}' pubspec.yaml || true)
             echo "name=v${VER:-0.0.0}" >> "$GITHUB_OUTPUT"
           fi
 
