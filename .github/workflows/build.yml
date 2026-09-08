@@ -216,10 +216,11 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Download all artifacts
+      - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+          pattern: writer-helper-*
           merge-multiple: true
 
       - name: Download source workspace for version resolution
