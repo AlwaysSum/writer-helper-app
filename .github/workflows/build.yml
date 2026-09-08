@@ -132,11 +132,24 @@ jobs:
         working-directory: src
         run: flutter build macos --release
 
+      - name: Normalize Mpv.framework symlink
+        working-directory: src
+        run: |
+          cd "build/macos/Build/Products/Release/"*.app/Contents/Frameworks/Mpv.framework
+          # media_kit_video 链接装载 Versions/A/Mpv，Dart 又 dlopen 顶层 Mpv；二者必须命中同一份
+          # libmpv。若顶层 Mpv 被 CocoaPods/zip 解引用成真实文件，会双份加载并复注册 m_config_cache，
+          # mpv_render_context_create 断言 SIGABRT。此处强制恢复符号链接，使两份路径归一到同一 inode。
+          if [ -f Mpv ] && [ ! -L Mpv ]; then rm -f Mpv; fi
+          ln -sfn Versions/A/Mpv Mpv
+          ls -la
+
       - name: Package app bundle
         working-directory: src
         run: |
           cd build/macos/Build/Products/Release
-          zip -rq writer-helper-macos-${{ steps.version.outputs.version }}.zip *.app
+          # -y/--symlinks: 以符号链接形式入库，避免把框架内的符号链接解引用成真实文件
+          # （否则同 inode 缺失，Dart dlopen 到第二份 libmpv 触发 m_config_cache 崩溃）
+          zip -rqy writer-helper-macos-${{ steps.version.outputs.version }}.zip *.app
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

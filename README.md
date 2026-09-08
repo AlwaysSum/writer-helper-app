@@ -1,86 +1,104 @@
-# Writer Helper · 必火写作助手
+<p align="center">
+  <img src="assets/logo1.png" width="128" alt="必火写作 WriterHelper" />
+</p>
 
-> 跨平台网文写作助手 —— 一款面向网络小说作者的**作品管理与 AI 生成一体化**工具。
+<h1 align="center">必火写作 · WriterHelper</h1>
 
-本仓库是 **Writer Helper App 的官方发布仓库**：包含产品介绍与 GitHub Actions 持续构建配置，**自动从 GitCode 源码仓库**（[Sunflower816/writer_helper_app](https://gitcode.com/Sunflower816/writer_helper_app)）拉取最新代码，构建 **Windows / macOS / Linux / Android** 安装包，并发布到本仓库的 [Releases](https://github.com/AlwaysSum/writer-helper-app/releases) 页面供下载。
+<p align="center">
+  一款为网络小说作者打造的 <b>AI 一体化创作工具</b><br />
+  从开书灵感、大纲章纲，到码字、润色、审查、书名测试，一个软件走完整个创作链路
+</p>
+
+<p align="center">
+  <a href="https://github.com/AlwaysSum/writer-helper-app/releases"><b>⬇️ 下载最新版本</b></a>
+  &nbsp;·&nbsp; Windows / macOS / Android
+</p>
 
 ---
 
-## ✨ 产品简介
+## 🎯 为什么做这个软件
 
-Writer Helper（必火写作）基于 Flutter（Material 3）实现，配合 AppFlowy 富文本编辑器与内置 AI 智能体，覆盖网文创作从「构思 → 码字 → 润色 → 测试」的完整链路。
+写网文最难的往往不是「写不出字」，而是：
 
-### 核心能力
+- 设定越堆越多，人物关系、伏笔、时间线全靠脑子记，写到几十万字必然崩；
+- 卡文时盯着空白文档，灵感不会自己冒出来；
+- 让 AI 帮着写，又总带着一股「AI 味」，平台一查一个准；
+- 每天日更六千字，写完就散架，根本没时间复盘和打磨。
 
-- **作品管理**：章纲、大纲、设定集、伏笔线索、备忘录，创作要素统一沉淀。
-- **富文本编辑器**：内置 AppFlowy 编辑器，专注码字体验，支持自动保存、查找替换。
-- **AI 智能体对话**：AiAgent 对话式创作辅助，支持章节生成、剧情推演、润色与续写。
-- **可视化生成工作流**：节点化编排 AI 生成流程，实现「上一章 → 推演 → 生成正文 → 自动审查」。
-- **时间线网络**：以时间线组织章节与设定，把握剧情脉络。
-- **向量语义检索**：跨作品素材、设定、正文的语义级检索。
-- **辅助工具**：AI 书名测试、拆书仿写、作品章节测试、作品分享广场。
+**必火写作**想解决的就是这几件事：把「记忆」交给软件（设定集、时间线、伏笔、语义检索），把「体力活」交给 AI（章纲推演、正文生成、润色、审查），把「决定权」留给你自己（AI 改动逐条对比、逐条采纳，历史记录随时回溯）。
 
-### 支持平台
+---
 
-| 平台 | 产物 |
+## ✨ 核心能力
+
+### 🧠 结构化创作，长篇不崩
+
+- **作品 / 章节 / 章纲**：分卷规划、批量识别既有稿件、批量补全章纲、正向推演与反向推演。
+- **设定集**：角色、场景、道具集中管理，写作时随手引用。
+- **伏笔线索 & 备忘录**：埋下的坑记在这儿，该回收时提醒你。
+- **时间线网络**：把章节与设定串成剧情脉络，一眼看清故事走向。
+- **向量语义检索**：跨作品、跨素材、跨正文的语义级搜索——「那个穿红衣的女配」也能搜出来。
+
+### ✍️ 编辑器 + AI，专注码字
+
+- 内置富文本编辑器，自动保存、全文查找替换、写作高亮规则。
+- **AI 智能体对话**：多模型自由配置，可挂载技能与写作规则，对话时直接引用章节、设定、素材作为上下文。
+- **可视化生成工作流**：节点化编排「上一章结尾 → 剧情推演 → 生成正文 → 自动审查」，一键跑完。
+- **AI Diff 对比**：AI 改了哪几句逐段高亮，支持并排 / 行内视图，逐条采纳或丢弃。
+- **历史记录**：每次改动都能回溯，误操作不怕丢稿。
+
+### 🛡️ 质量把控，去掉 AI 味
+
+- **AI 祛味**：一键软化 AI 痕迹，让文字更像人写的。
+- **章节审查**：AI 味审查、重复度检测、错别字与阅读感优化、自定义写作规则检查。
+- **写作统计看板**：码字速度、日 / 周产出，把手感量化出来。
+
+### 💡 灵感与素材
+
+- **AI 灵感库**：生成并收藏开书灵感、剧情灵感。
+- **AI 熔书库**：分解书籍档案，熔炼成可复用的创作卡片。
+- **AI 拆书**：拆解佳作的结构与笔法，转化为自己的方法论。
+- **AI 书名测试**：抓取真实榜单，模拟多位读者投票，选出最吸睛的那个书名。
+- **写作风格包 & 提示词广场**：现成的风格与提示词，拿来即用。
+
+### 🌐 生态与同步
+
+- **技能广场 / 智能体广场 / 作品分享广场**：用别人调好的技能与智能体，也可以分享自己的作品。
+- **功能催更榜**：为想要的功能投票，直接影响迭代顺序。
+- **WebDAV 云同步**：多设备备份，换机不慌。
+- **数据本地优先**：作品存在你自己的电脑上，AI 密钥只保存在本地，不上传。
+- **应用内更新**：检测到新版本直接提示下载安装。
+
+---
+
+## 📥 下载
+
+| 平台 | 安装包 |
 | --- | --- |
-| Windows | 安装包 `WriterHelperSetup-<版本>.exe`（Inno Setup） |
-| macOS | `.app` 打包的 `writer-helper-macos-<版本>.zip` |
-| Linux | 免安装 `writer-helper-linux-<版本>.tar.gz`（解压即用） |
-| Android | APK `writer-helper-android-<版本>.apk` |
+| Windows 10 / 11（64 位） | `WriterHelperSetup-<版本>.exe`（一键安装） |
+| macOS | `writer-helper-macos-<版本>.zip`（解压得到 `.app`） |
+| Android | `writer-helper-android-<版本>.apk` |
 
-> 表格中各安装包均由下方 GitHub Actions 在本仓库构建生成。
+👉 **[前往 Releases 下载](https://github.com/AlwaysSum/writer-helper-app/releases)** —— 选择最新版本，按自己的平台下载对应文件即可。
 
----
-
-## 🚀 构建产物下载
-
-打开本仓库 **Releases** 页，选择目标版本即可下载对应平台的安装包：
-
-- [前往 Releases](https://github.com/AlwaysSum/writer-helper-app/releases)
-- 每个 Release 附带 **SHA256 校验和**，下载后请核验文件完整性。
+> 本仓库只发布安装包，不包含源代码。软件仍在快速迭代，遇到问题或有功能建议，欢迎从下方社群直接找我们。
 
 ---
 
-## ⚙️ 自动构建（GitHub Actions）
+## 💬 加入社群
 
-本仓库通过 [build.yml](.github/workflows/build.yml) 实现「源码在 GitCode、构建与发布在 GitHub」的流水线：
+扫码加入官方社群，获取使用帮助、功能建议与最新动态：
 
-```
-GitCode 源码仓库 ──git clone──▶ GitHub Actions Runner
-                                   ├─ Windows  job：flutter build windows + Inno Setup
-                                   ├─ macOS    job：flutter build macos --release（关闭强签名）
-                                   ├─ Linux    job：flutter create linux + build linux
-                                   └─ Android  job：flutter build apk --release
-                                        │
-                                        ▼
-                             上传 Actions 产物 → 发布 GitHub Release（安装包附件）
-```
-
-### 触发方式
-
-1. **手动触发（推荐）**：仓库 `Actions` 页 → `build-release` → **Run workflow**，
-   - 可指定 `gitcode_url` / `gitcode_branch`；
-   - 勾选 *publish* 后构建完成会自动发布 GitHub Release。
-2. **打 tag 触发**：向本仓库推送形如 `v*` 的 tag（如 `v1.1.1`）即可自动构建并发布 Release。
-
-### 关键说明 / 注意事项
-
-- **Linux 目录**：源码仓库当前没有 `linux/` 平台目录，workflow 在构建前自动执行
-  `flutter create --platforms=linux` 生成后再编译。
-- **Android 签名**：当前 `release` 构建使用 debug 签名（源码 `android/app/build.gradle.kts` 默认配置），
-  可直接安装验证；如需上架应用商店，请在源码侧配置正式签名后再触发构建。
-- **macOS 签名**：CI 默认不进行公证/签名（`CODE_SIGNING_ALLOWED=NO`），生成的 `.app`
-  仅适用于本地测试；对外分发建议接入 Apple 开发者证书与 notarization。
-- **原生依赖**：Windows 依赖 Inno Setup（workflow 自动安装）；Linux 依赖 gtk3/clang 等（已自动安装）。
-  media_kit 的 mpv/ANGLE 资源已随源码仓库提交，构建时无需联网下载。
+| 微信 | QQ | 抖音 | 飞书反馈 |
+| ---- | --- | ---- | -------- |
+| <img src="assets/qr_wechat.webp" width="160" /> | <img src="assets/qr_qq.webp" width="160" /> | <img src="assets/qr_douyin.webp" width="160" /> | <img src="assets/qr_feishu_feedback.webp" width="160" /> |
 
 ---
 
-## 🛠 技术栈
+## ⚠️ 说明
 
-Flutter · Dart · Riverpod · go_router · hive_ce · dio · AppFlowy Editor · dart_agent_core
+- 请从本仓库 Releases 获取安装包，避免第三方渠道带来的安全风险。
+- macOS 版本当前未做 Apple 签名与公证，首次打开请在「系统设置 → 隐私与安全性」中允许运行。
+- AI 生成内容仅作辅助，作品的版权与内容责任由作者自行承担；使用时请遵守相关平台规则与法律法规。
 
-## 📄 许可
-
-本仓库用于发布构建产物；应用源码遵循其源码仓库的许可协议。
+Copyright © 必火写作 WriterHelper 团队
