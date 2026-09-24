@@ -162,7 +162,9 @@ jobs:
   # ------------------------------------------------------------------
 
   # ------------------------------------------------------------------
-  # Android：flutter build apk --release（当前 release 使用 debug 签名）
+  # Android：flutter build apk --release
+  #   密钥齐备（secrets）时用 certs/app-signing.jks 正式签名，
+  #   否则 build.gradle.kts 自动回退 debug 签名保证出包。
   # ------------------------------------------------------------------
   android:
     needs: prepare
@@ -187,6 +189,21 @@ jobs:
         run: |
           VER=$(awk -F': *' '/^version:/{print $2; exit}' pubspec.yaml)
           echo "version=$VER" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Android signing keystore
+        working-directory: src
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEY_PROPERTIES: ${{ secrets.ANDROID_KEY_PROPERTIES }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEY_PROPERTIES" ]; then
+            echo "::warning::缺少 ANDROID_KEYSTORE_BASE64 / ANDROID_KEY_PROPERTIES 密钥，release 将回退 debug 签名"
+            exit 0
+          fi
+          mkdir -p certs
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > certs/app-signing.jks
+          printf '%s\n' "$ANDROID_KEY_PROPERTIES" > android/key.properties
+          echo "已写入 certs/app-signing.jks 与 android/key.properties"
 
       - name: Flutter build apk
         working-directory: src
