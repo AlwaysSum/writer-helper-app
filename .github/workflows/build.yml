@@ -1,5 +1,7 @@
 # 从 GitCode 拉取 Writer Helper App 源码，构建 Windows / macOS / Android 安装包，
 # 上传为 Actions 构建产物；打 tag 推送或勾选发布时，自动发布 GitHub Release（安装包作为附件）。
+# 另含 iOS(TestFlight) 任务（可通过“build_ios”开关控制，需 App Store Connect API Key 密钥，
+# 缺失时自动跳过，不影响其余平台出包）。macOS 仅出未签名 zip，不发布到 App Store。
 
 name: build-release
 
@@ -16,6 +18,11 @@ on:
         default: main
       publish:
         description: 构建完成后发布到 GitHub Release
+        required: false
+        type: boolean
+        default: false
+      build_ios:
+        description: 是否构建 iOS 并上传 TestFlight（需要 ASC_API Key 密钥）
         required: false
         type: boolean
         default: false
@@ -156,6 +163,89 @@ jobs:
         with:
           name: writer-helper-macos
           path: src/build/macos/Build/Products/Release/writer-helper-macos-*.zip
+
+  # ------------------------------------------------------------------
+  # iOS / iPadOS：flutter build ipa（Release，自动签名）
+  #   通过 App Store Connect API Key 让 xcodebuild 自动创建/下载证书与描述文件，
+  #   构建出通用 ipa（iPhone + iPad 同一个包，无需单独构建 iPad），再上传 TestFlight。
+  #   密钥缺失时跳过，不影响其他平台。
+  # ------------------------------------------------------------------
+  ios:
+    needs: prepare
+    runs-on: macos-latest
+    if: |
+      github.event_name != 'workflow_dispatch' ||
+      github.event.inputs.build_ios == 'true'
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: source-workspace
+          path: .
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install App Store Connect API key
+        id: signing
+        env:
+          ASC_KEY_BASE64: ${{ secrets.ASC_KEY_BASE64 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+        run: |
+          if [ -z "$ASC_KEY_BASE64" ] || [ -z "$ASC_KEY_ID" ]; then
+            echo "::warning::缺少 ASC_KEY_BASE64 / ASC_KEY_ID 密钥，跳过 iOS/TestFlight 构建"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          printf '%s' "$ASC_KEY_BASE64" | openssl base64 -d -A \
+            > "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Build IPA
+        if: steps.signing.outputs.skip != 'true'
+        working-directory: src
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          set -o pipefail
+          # 先用 Flutter 生成工程配置并预编译 Dart（关闭签名），
+          # 再由 xcodebuild 带着 API Key 完成自动签名与导出，避免 Flutter 不透传鉴权参数。
+          flutter build ios --release --no-codesign
+          cd ios
+          AUTH_ARGS=(
+            -allowProvisioningUpdates
+            -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+            -authenticationKeyID "$ASC_KEY_ID"
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          )
+          xcodebuild -workspace Runner.xcworkspace -scheme Runner -configuration Release \
+            -archivePath "../build/ios/Runner.xcarchive" "${AUTH_ARGS[@]}" archive
+          xcodebuild -exportArchive \
+            -archivePath "../build/ios/Runner.xcarchive" \
+            -exportOptionsPlist "../ios/AppStoreExportOptions.plist" \
+            -exportPath "../build/ios/ipa" "${AUTH_ARGS[@]}"
+
+      - name: Upload to TestFlight
+        if: steps.signing.outputs.skip != 'true'
+        working-directory: src
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          xcrun altool --upload-app -f build/ios/ipa/*.ipa -t ios \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" --verbose
+
+      - name: Upload ipa artifact
+        if: steps.signing.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-testflight-ipa
+          if-no-files-found: ignore
+          path: src/build/ios/ipa/*.ipa
+
+  
 
   # ------------------------------------------------------------------
   # Linux：按需求移除 Linux 安装包构建（不再发布该平台）
