@@ -1,0 +1,146 @@
+# 独立 iOS → TestFlight 发布（不影响 Windows/macOS/Android 多平台发布流程）。
+# 从 GitCode 拉取源码，用 App Store Connect API Key 让 xcodebuild 自动签名，
+# 构建通用 ipa（iPhone+iPad 同一个包）并上传 TestFlight。
+#
+# 与 build.yml 的区别：
+#   - 只构建并上传 iOS，不跑其它平台、不创建 GitHub Release；
+#   - 每次上传强制设置唯一更高的构建号（FLUTTER_BUILD_NUMBER = CFBundleVersion），
+#     TestFlight 要求每次上传构建号递增，否则会报 "build number already exists"。
+#
+# 前置要求（已配置于仓库 Secrets）：
+#   ASC_KEY_BASE64 : App Store Connect API Key 文件的 base64（AuthKey_<ID>.p8）
+#   ASC_KEY_ID     : API Key ID（页面上形如 4673KJ26W7）
+#   ASC_ISSUER_ID  : API Key Issuer ID（UUID）
+#   GITCODE_TOKEN  : GitCode 个人访问令牌（拉取私有源码，可选）
+
+name: ios-testflight
+
+on:
+  workflow_dispatch:
+    inputs:
+      gitcode_url:
+        description: GitCode 源码仓库地址
+        required: false
+        default: https://gitcode.com/Sunflower816/writer_helper_app.git
+      gitcode_branch:
+        description: GitCode 源码分支
+        required: false
+        default: main
+      build_number:
+        description: TestFlight 构建号(CFBundleVersion)，留空则用 run_number 自动递增
+        required: false
+        default: ''
+
+env:
+  GITCODE_URL: ${{ github.event.inputs.gitcode_url || 'https://gitcode.com/Sunflower816/writer_helper_app.git' }}
+  GITCODE_BRANCH: ${{ github.event.inputs.gitcode_branch || 'main' }}
+
+concurrency:
+  group: ios-testflight
+  cancel-in-progress: true
+
+jobs:
+  # 把 GitHub 发布仓库自身保留在工作区，并把源码克隆到 ./src（与 build.yml 的 prepare 一致）
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone source from GitCode
+        shell: bash
+        run: |
+          if [ -n "${{ secrets.GITCODE_TOKEN }}" ]; then
+            AUTH_URL=$(printf '%s' "$GITCODE_URL" | sed "s#://#://Sunflower816:${{ secrets.GITCODE_TOKEN }}@#")
+          else
+            AUTH_URL="$GITCODE_URL"
+          fi
+          git clone --depth 1 --branch "$GITCODE_BRANCH" "$AUTH_URL" src
+      - name: Upload source workspace
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-workspace
+          path: .
+          include-hidden-files: true
+
+  ios-testflight:
+    needs: prepare
+    runs-on: macos-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: source-workspace
+          path: .
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # run_number 是每月/仓库内单调递增的序号，天然满足 TestFlight 每次更高构建号的要求
+      - name: Resolve build number
+        id: buildnum
+        shell: bash
+        run: |
+          INPUT="${{ github.event.inputs.build_number }}"
+          if [ -z "$INPUT" ]; then BN="${{ github.run_number }}"; else BN="$INPUT"; fi
+          echo "build_number=$BN" >> "$GITHUB_OUTPUT"
+
+      - name: Install App Store Connect API key
+        id: signing
+        env:
+          ASC_KEY_BASE64: ${{ secrets.ASC_KEY_BASE64 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+        run: |
+          if [ -z "$ASC_KEY_BASE64" ] || [ -z "$ASC_KEY_ID" ]; then
+            echo "::error::缺少 ASC_KEY_BASE64 / ASC_KEY_ID 密钥，无法签名并上传 TestFlight"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          printf '%s' "$ASC_KEY_BASE64" | openssl base64 -d -A \
+            > "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      # 先用 Flutter 生成工程配置并预编译 Dart（关闭签名），再由 xcodebuild 带
+      # API Key 完成自动签名/导出（Flutter 不透传鉴权参数）。FLUTTER_BUILD_NUMBER
+      # 控制 CFBundleVersion，供 TestFlight 区分版本。
+      - name: Build signed IPA
+        if: steps.signing.outputs.skip != 'true'
+        working-directory: src
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          set -o pipefail
+          BN="${{ steps.buildnum.outputs.build_number }}"
+          flutter build ios --release --no-codesign --build-number "$BN"
+          cd ios
+          AUTH_ARGS=(
+            -allowProvisioningUpdates
+            -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+            -authenticationKeyID "$ASC_KEY_ID"
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          )
+          xcodebuild -workspace Runner.xcworkspace -scheme Runner -configuration Release \
+            -archivePath "../build/ios/Runner.xcarchive" \
+            FLUTTER_BUILD_NUMBER="$BN" "${AUTH_ARGS[@]}" archive
+          xcodebuild -exportArchive \
+            -archivePath "../build/ios/Runner.xcarchive" \
+            -exportOptionsPlist "../ios/AppStoreExportOptions.plist" \
+            -exportPath "../build/ios/ipa" \
+            FLUTTER_BUILD_NUMBER="$BN" "${AUTH_ARGS[@]}"
+
+      - name: Upload to TestFlight
+        if: steps.signing.outputs.skip != 'true'
+        working-directory: src
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          xcrun altool --upload-app -f build/ios/ipa/*.ipa -t ios \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" --verbose
+
+      - name: Upload ipa artifact
+        if: steps.signing.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-testflight-ipa
+          path: src/build/ios/ipa/*.ipa
