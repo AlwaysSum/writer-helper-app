@@ -111,6 +111,9 @@ jobs:
         run: |
           set -o pipefail
           BN="${{ steps.buildnum.outputs.build_number }}"
+          # iOS 端不运行本地向量 Python 服务（仅桌面端使用）。assets 中的 .py 带
+          # shebang 会被 Apple 视为未签名代码对象导致上传 90035，故先清空内容占位。
+          find resources/scripts/vectordb -name '*.py' -type f -exec sh -c ': > "$1"' _ {} \;
           flutter build ios --release --no-codesign --build-number "$BN"
           cd ios
           AUTH_ARGS=(
