@@ -147,11 +147,12 @@ jobs:
             -authenticationKeyID "$ASC_KEY_ID"
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
           )
-          # 工程里 Release 配置写的是 "iPhone Developer"，Archive 会去找开发描述文件；
-          # 命令行覆盖为发布身份，才会匹配 App Store 描述文件。
+          # 工程 Release 配置的签名身份已改为 Apple Distribution，但工程里没有
+          # DEVELOPMENT_TEAM，SPM 插件包会报 "requires a development team"；
+          # 命令行补上团队 ID，自动签名才会解析到发布身份与 App Store 描述文件。
           xcodebuild -workspace Runner.xcworkspace -scheme Runner -configuration Release \
             -archivePath "../build/ios/Runner.xcarchive" \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
+            DEVELOPMENT_TEAM=XM6X2AAHH5 \
             FLUTTER_BUILD_NUMBER="$BN" "${AUTH_ARGS[@]}" archive
           xcodebuild -exportArchive \
             -archivePath "../build/ios/Runner.xcarchive" \
