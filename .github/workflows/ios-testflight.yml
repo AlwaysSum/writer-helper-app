@@ -99,6 +99,31 @@ jobs:
             > "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
+      # 把固定的 Apple Distribution 证书（.p12）导入临时钥匙串：
+      # runner 是全新机器，本地没有证书私钥时 xcodebuild 会新建证书，账号证书数量很快打满
+      # （Your account has reached the maximum number of certificates）。导入后直接复用。
+      - name: Import distribution certificate
+        if: steps.signing.outputs.skip != 'true'
+        env:
+          IOS_DIST_CERT_BASE64: ${{ secrets.IOS_DIST_CERT_BASE64 }}
+          IOS_DIST_CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+        run: |
+          if [ -z "$IOS_DIST_CERT_BASE64" ] || [ -z "$IOS_DIST_CERT_PASSWORD" ]; then
+            echo "::warning::缺少 IOS_DIST_CERT_BASE64 / IOS_DIST_CERT_PASSWORD，将回退自动新建证书"
+            exit 0
+          fi
+          KEYCHAIN="$RUNNER_TEMP/app-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+          printf '%s' "$IOS_DIST_CERT_BASE64" | base64 -d > "$RUNNER_TEMP/dist.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/dist.p12" -k "$KEYCHAIN" \
+            -P "$IOS_DIST_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm -f "$RUNNER_TEMP/dist.p12"
+
       # 先用 Flutter 生成工程配置并预编译 Dart（关闭签名），再由 xcodebuild 带
       # API Key 完成自动签名/导出（Flutter 不透传鉴权参数）。FLUTTER_BUILD_NUMBER
       # 控制 CFBundleVersion，供 TestFlight 区分版本。
@@ -122,8 +147,11 @@ jobs:
             -authenticationKeyID "$ASC_KEY_ID"
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
           )
+          # 工程里 Release 配置写的是 "iPhone Developer"，Archive 会去找开发描述文件；
+          # 命令行覆盖为发布身份，才会匹配 App Store 描述文件。
           xcodebuild -workspace Runner.xcworkspace -scheme Runner -configuration Release \
             -archivePath "../build/ios/Runner.xcarchive" \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
             FLUTTER_BUILD_NUMBER="$BN" "${AUTH_ARGS[@]}" archive
           xcodebuild -exportArchive \
             -archivePath "../build/ios/Runner.xcarchive" \
