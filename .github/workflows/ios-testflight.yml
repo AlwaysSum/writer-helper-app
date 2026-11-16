@@ -161,15 +161,14 @@ jobs:
             -authenticationKeyID "$ASC_KEY_ID"
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
           )
-          # 工程里没有 DEVELOPMENT_TEAM，SPM 插件包会报 "requires a development team"，
-          # 必须在命令行补上团队 ID。签名走手动模式：用导入的固定发行证书 + 预先生成
-          # 的 App Store 描述文件（WriterHelperAppStore），不再让 Xcode 现场新建证书。
+          # DEVELOPMENT_TEAM 必须走命令行：SPM 插件包是独立的 package 工程，
+          # 缺少团队 ID 会报 "requires a development team"。
+          # 手动签名（Manual + 发行证书 + App Store 描述文件）只写在 Runner target 的
+          # Release 配置里；命令行是整个 workspace 生效，会污染 SPM 包 target
+          # （它们不支持描述文件，报 "does not support provisioning profiles"）。
           xcodebuild -workspace Runner.xcworkspace -scheme Runner -configuration Release \
             -archivePath "../build/ios/Runner.xcarchive" \
             DEVELOPMENT_TEAM=XM6X2AAHH5 \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
-            PROVISIONING_PROFILE_SPECIFIER="WriterHelperAppStore" \
             FLUTTER_BUILD_NUMBER="$BN" "${AUTH_ARGS[@]}" archive
           xcodebuild -exportArchive \
             -archivePath "../build/ios/Runner.xcarchive" \
