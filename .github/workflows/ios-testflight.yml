@@ -147,9 +147,10 @@ jobs:
             -authenticationKeyID "$ASC_KEY_ID"
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
           )
-          # 工程 Release 配置的签名身份已改为 Apple Distribution，但工程里没有
-          # DEVELOPMENT_TEAM，SPM 插件包会报 "requires a development team"；
-          # 命令行补上团队 ID，自动签名才会解析到发布身份与 App Store 描述文件。
+          # 工程里没有 DEVELOPMENT_TEAM，SPM 插件包会报 "requires a development team"，
+          # 必须在命令行补上团队 ID。签名身份保持工程默认（Apple Development），
+          # 由 Xcode 自动签名在 Archive 时解析成发行身份与 App Store 描述文件；
+          # 这里若强行覆盖 CODE_SIGN_IDENTITY 会报 conflicting provisioning settings。
           xcodebuild -workspace Runner.xcworkspace -scheme Runner -configuration Release \
             -archivePath "../build/ios/Runner.xcarchive" \
             DEVELOPMENT_TEAM=XM6X2AAHH5 \
